@@ -1,0 +1,3 @@
+[submodule "third_parties/pe-parse"]
+	path = third_parties/pe-parse
+	url = https://github.com/trailofbits/pe-parse
