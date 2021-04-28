@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 project(pe-injector)
 
 if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Default install directory" FORCE)
+  set(CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_SOURCE_DIR}/build/install CACHE PATH "Default install directory" FORCE)
 endif ()
 
 if (MSVC)
@@ -19,7 +19,7 @@ if (MSVC)
   endif ()
 
 else ()
-  set(CMAKE_CXX_STANDARD 11)
+  set(CMAKE_CXX_STANDARD 17)
   set(CMAKE_CXX_EXTENSIONS OFF)
 
   list(APPEND PEADDRCONV_CXXFLAGS
@@ -35,10 +35,20 @@ else ()
   endif ()
 endif ()
 
-find_package(pe-parse REQUIRED)
+# we add the files in the include directory to be included
+# while compiling all the source code
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/dependencies/pe-parse/build/include)
+
+find_package(pe-parse REQUIRED PATHS dependencies/pe-parse/build/lib/cmake/)
+
+add_library(SECTION src/Section.cpp)
+add_library(INJECTOR src/Injector.cpp)
 
 add_executable(${PROJECT_NAME} main.cpp)
-target_link_libraries(${PROJECT_NAME} pe-parse::pe-parse)
+target_link_libraries(INJECTOR SECTION)
+target_link_libraries(${PROJECT_NAME} INJECTOR)
+target_link_libraries(${PROJECT_NAME} pe-parse::pe-parser-library)
 target_compile_options(${PROJECT_NAME} PRIVATE ${PEADDRCONV_CXXFLAGS})
 
 install(TARGETS ${PROJECT_NAME} DESTINATION "bin")
