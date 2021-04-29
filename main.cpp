@@ -1,10 +1,13 @@
 #include <Injector.hpp>
 #include <string>
 #include <iostream>
+#include <vendor/argh.h>
 
 int main(int argc, char const *argv[])
 {
-    if (argc != 3)
+    argh::parser cmdl(argv);
+
+    if (cmdl[{"-h", "--help"}] || argc != 3)
     {
         std::cout
             << "Usage: " << argv[0]
@@ -13,7 +16,7 @@ int main(int argc, char const *argv[])
         exit(-1);
     }
 
-    pe_injector::Injector my_injector(argv[1], argv[2]);
+    pe_injector::Injector my_injector(cmdl[1], cmdl[2]);
 
     my_injector.run();
 
