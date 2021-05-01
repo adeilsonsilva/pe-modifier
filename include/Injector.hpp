@@ -31,6 +31,11 @@ public:
            const std::string &output_path,
            const uint        &n_bytes=1);
 
+  Injector(const std::string &input_path,
+           const std::string &middleware_path,
+           const std::string &output_path,
+           const uint        &n_bytes=1);
+
   ~Injector();
 
   void run(const bool &use_random_position=true);
@@ -55,6 +60,9 @@ private:
 
   /// Path to exe file to be written
   std::string m_output;
+
+  /// Path to exe to be used as source of data to be injected
+  std::string m_middleware;
 
   /// Multiplier of `FileAlignment` to be injected into the file
   uint m_number_of_injected_bytes;

@@ -12,14 +12,27 @@ using namespace peparse;
 namespace pe_injector {
 
 Injector::Injector(const std::string &input_path,
+                   const std::string &middleware_path,
                    const std::string &output_path,
                    const uint        &n_bytes)
-  : m_input(input_path),
-    m_output(output_path),
-    m_pe(nullptr),
-    m_number_of_injected_bytes(n_bytes),
-    m_injection_info({0}),
-    m_replaced_section({0})
+: m_input(input_path),
+  m_output(output_path),
+  m_middleware(middleware_path),
+  m_pe(nullptr),
+  m_number_of_injected_bytes(n_bytes),
+  m_injection_info({0}),
+  m_replaced_section({0})
+{
+
+}
+
+Injector::Injector(const std::string &input_path,
+                   const std::string &output_path,
+                   const uint        &n_bytes)
+  : Injector(input_path,
+             std::string(""),
+             output_path,
+             n_bytes)
 { }
 
 Injector::~Injector()
@@ -33,6 +46,9 @@ Injector::run(const bool &use_random_position)
   std::lock_guard<std::mutex> g(m_mutex);
 
   std::cout << m_input << " => " << m_output << std::endl;
+
+  if (!m_middleware.empty())
+    std::cout << "Using " << m_middleware << " as middleware." << std::endl;
 
   /* Parse input file */
   m_pe = peparse::ParsePEFromFile(m_input.c_str());
@@ -191,13 +207,63 @@ Injector::run(const bool &use_random_position)
   // functionality
   auto s_Virtual_Offset = m_replaced_section.VirtualAddress + m_replaced_section.Misc.VirtualSize;
 
-  m_injected_section = std::make_unique<Section>(
-    Section(m_injection_info.length,
-            s_FileAlignment,
-            s_SectionAlignment,
-            m_injection_info.injected_section_data_offset,
-            s_Virtual_Offset
-            ));
+  // If a middleware is given, use it as source for the data of the new section,
+  // use random bytes otherwise
+  if (m_middleware.empty())
+  {
+    m_injected_section = std::make_unique<Section>(
+      Section(m_injection_info.length,
+              s_FileAlignment,
+              s_SectionAlignment,
+              m_injection_info.injected_section_data_offset,
+              s_Virtual_Offset
+              ));
+  }
+  else
+  {
+    std::vector<std::uint8_t> payload(m_injection_info.length);
+
+    /* Parse middleware file */
+    auto middleware = peparse::ParsePEFromFile(m_input.c_str());
+
+    if (middleware == nullptr)
+    {
+      std::cout
+        << "Error: " << peparse::GetPEErr()
+        << " (" << peparse::GetPEErrString() << ")"
+        << std::endl;
+
+      std::cout
+        << "Location: " << peparse::GetPEErrLoc()
+      << std::endl;
+
+      return;
+    }
+
+    // only used once to initialise (seed) engine
+    std::random_device rd;
+    // random-number engine used (Mersenne-Twister in this case)
+    std::mt19937 rng(rd());
+    // guaranteed unbiased
+    std::uniform_int_distribution<uint>
+      dist(0, middleware->fileBuffer->bufLen - m_injection_info.length - 1);
+
+    const auto r_idx = dist(rng);
+
+    for (uint j = 0; j < m_injection_info.length; j++)
+    {
+      payload[j] = middleware->fileBuffer->buf[r_idx + j];
+    }
+
+    m_injected_section = std::make_unique<Section>(
+      Section(payload,
+              s_FileAlignment,
+              s_SectionAlignment,
+              m_injection_info.injected_section_data_offset,
+              s_Virtual_Offset
+              ));
+  }
+
 
   write_injected_file();
 

@@ -5,20 +5,46 @@
 
 int main(int argc, char const *argv[])
 {
-    argh::parser cmdl(argv);
+    argh::parser cmdl;
 
-    if (cmdl[{"-h", "--help"}] || argc != 3)
+    cmdl.add_params({"-h", "--help", "-i", "--input", "-o", "--output", "-m", "--middleware"});
+
+    cmdl.parse(argc, argv, argh::parser::PREFER_PARAM_FOR_UNREG_OPTION);
+
+    if (cmdl[{"-h", "--help"}] || argc < 3)
     {
         std::cout
             << "Usage: " << argv[0]
-            << " INPUT.exe OUTPUT.exe"
+            << " -i INPUT.exe -o OUTPUT.exe [-m MIDDLEWARE.exe]"
         << std::endl;
         exit(-1);
     }
 
-    pe_injector::Injector my_injector(cmdl[1], cmdl[2]);
+    auto input      = cmdl({"-i", "--input"}).str();
+    auto output     = cmdl({"-o", "--output"}).str();
+    auto middleware = cmdl({"-m", "--middleware"}).str();
 
-    my_injector.run();
+    if (!input.empty() && !output.empty())
+    {
+        if (!middleware.empty())
+        {
+            std::cout << "USING THREE" << std::endl;
+            pe_injector::Injector my_injector(input,
+                                              middleware,
+                                              output);
+
+            my_injector.run();
+        }
+        else
+        {
+            std::cout << "USING TWO" << std::endl;
+            pe_injector::Injector my_injector(input,
+                                              output);
+
+            my_injector.run();
+        }
+    }
+
 
     return 0;
 }
