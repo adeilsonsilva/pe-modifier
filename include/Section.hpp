@@ -16,7 +16,7 @@
 
 #include <array>
 #include <vector>
-#include <cstddef>
+#include <random> // std::random_device
 
 /// The header of a section is 40 bytes long. [1]
 #define SECTION_HEADER_SIZE 40
@@ -43,12 +43,12 @@ public:
    * @param raw_offset
    * @param virtual_offset
    */
-  Section(const uint &payload_size,
-          const uint &file_alignment,
-          const uint &section_alignment,
-          const uint &raw_offset,
-          const uint &virtual_offset,
-          const bool &generate_data=true);
+  Section(const uint     &payload_size,
+          const uint32_t &file_alignment,
+          const uint32_t &section_alignment,
+          const uint     &raw_offset,
+          const uint32_t &virtual_offset,
+          const bool     &generate_data=true);
 
   /**
    * @brief Construct a new Section object with a given payload.
@@ -59,34 +59,70 @@ public:
    * @param raw_offset
    * @param virtual_offset
    */
-  Section(const std::vector<std::byte> &payload,
-          const uint                    &file_alignment,
-          const uint                    &section_alignment,
-          const uint                    &raw_offset,
-          const uint                    &virtual_offset);
+  Section(const std::vector<std::uint8_t>   &payload,
+          const uint32_t                    &file_alignment,
+          const uint32_t                    &section_alignment,
+          const uint                        &raw_offset,
+          const uint32_t                    &virtual_offset);
 
   /**
    * @brief Destroy the Section object
    */
   ~Section() {};
 
+  inline uint getHeaderSize() const { return m_Header.size(); }
+  inline auto getHeaderData() const { return m_Header; }
+  inline auto getData()       const { return m_Data; }
+
+  /**
+   * @brief Method to compute section alignments.
+   *
+   * @param src    Value to be aligned.
+   * @param target Target value of the alignment.
+   *
+   * @return uint
+   */
+  static uint align(const uint &src,
+                    const uint &target);
+
+  /**
+   * @brief Generate random payload with size.
+   *
+   * @param size
+   * @param low
+   * @param high
+   * @return std::vector<std::uint8_t>
+   */
+  std::vector<std::uint8_t> generate_payload(const uint &size,
+                                             const uint &low=0,
+                                             const uint &high=255);
+
+  /**
+   * @brief To align a section to the alignment size, we
+   *        might need to pad it with zero bytes
+   *
+   * @param size
+   * @return std::vector<std::uint8_t>
+   */
+  std::vector<std::uint8_t> gen_padding_bytes(const uint &size);
+
 private:
 
   /**
    * @brief The set of bytes that representing this section's header.
    */
-  std::array<std::byte, SECTION_HEADER_SIZE> m_Header;
+  std::array<std::uint8_t, SECTION_HEADER_SIZE> m_Header;
 
   /**
    * @brief The set of bytes representing this section's data.
    */
-  std::vector<std::byte> m_Data;
+  std::vector<std::uint8_t> m_Data;
   /**
    * @brief The set of bytes representing some of the bytes in this section's
    * data array. It can be either randomly generated or set with data from
    * other files.
    */
-  std::vector<std::byte> m_payload;
+  std::vector<std::uint8_t> m_payload;
 
   /**
    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -96,7 +132,22 @@ private:
 
 
   /// Section name must be equal to 8 (ASCII) bytes
-  std::array<std::byte, 8> m_Name = { std::byte{42}, std::byte{99}, std::byte{110}, std::byte{110}, std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0} };
+  std::array<std::uint8_t, 8> m_Name = { 46, 99, 110, 110, 0, 0, 0, 0 };
+
+  /// The amount of memory the loader will allocate for this section. As
+  /// we don't want it to be executed, we can set it to 0 and it won't take
+  /// space in memory
+  std::array<std::uint8_t, 4> m_VirtualSize = {0, 0, 0, 0};
+
+  /**
+   * "For executable images, the address of the first byte of the section
+   * relative to the image base when the section is loaded into memory." [1]
+   *
+   * We will copy it from the section we are "replacing". It is the virtual
+   * offset from the last section when loaded to memory
+   * (last_section.VirtualAddress + last_section.VirtualSize)
+   */
+  uint m_VirtualAddress;
 
   /**
    * "For executable images, this must be a multiple of FileAlignment
@@ -116,25 +167,10 @@ private:
    */
   uint m_PointerToRawData;
 
-  /**
-   * "For executable images, the address of the first byte of the section
-   * relative to the image base when the section is loaded into memory." [1]
-   *
-   * We will copy it from the section we are "replacing". It is the virtual
-   * offset from the last section when loaded to memory
-   * (last_section.VirtualAddress + last_section.VirtualSize)
-   */
-  uint m_VirtualAddress;
-
-  /// The amount of memory the loader will allocate for this section. As
-  /// we don't want it to be executed, we can set it to 0 and it won't take
-  /// space in memory
-  uint m_VirtualSize = 0;
-
   /// "The flags that describe the characteristics of the section.".
   /// (it is 4 bytes long).
-  std::array<std::byte, 8> m_characteristics
-    = { std::byte{static_cast<unsigned char>(0x40000000 | 0x00000040)} }; // IMAGE_SCN_MEM_READ | IMAGE_SCN_CNT_INITIALIZED_DATA
+  std::array<std::uint8_t, 8> m_Characteristics
+    = { static_cast<unsigned char>(0x40000000 | 0x00000040) }; // IMAGE_SCN_MEM_READ | IMAGE_SCN_CNT_INITIALIZED_DATA
 
   /**
    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
@@ -144,39 +180,32 @@ private:
 
   /// "This is set to zero for executable images or if there are no
   /// relocations." (it is 4 bytes long)
-  std::array<std::byte, 4> m_PointerToRelocations
-    = { std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0}};
+  std::array<std::uint8_t, 4> m_PointerToRelocations = { 0, 0, 0, 0};
 
   /// "This value should be zero for an image because COFF debugging
   /// information is deprecated." (it is 4 bytes long)
-  std::array<std::byte, 4> m_PointerToLinenumbers = { std::byte{0}, std::byte{0}, std::byte{0}, std::byte{0}};
+  std::array<std::uint8_t, 4> m_PointerToLinenumbers = { 0, 0, 0, 0};
 
   /// "The number of relocation entries for the section. This is set to zero
   /// for executable images." (it is 2 bytes long)
-  std::array<std::byte, 2> m_NumberOfRelocations = { std::byte{0}, std::byte{0} };
+  std::array<std::uint8_t, 2> m_NumberOfRelocations = { 0, 0 };
 
   /// "The number of line-number entries for the section. This value should be
   /// zero for an image because COFF debugging information is deprecated."
   /// (it is 2 bytes long)
-  std::array<std::byte, 2> m_NumberOfLinenumbers = { std::byte{0}, std::byte{0} };
+  std::array<std::uint8_t, 2> m_NumberOfLinenumbers = { 0, 0 };
 
+  // random-number engine used (Mersenne-Twister in this case)
+  std::mt19937 m_rng;
 
-  /**
-   * @brief Method to compute section alignments.
-   *
-   * @param src    Value to be aligned.
-   * @param target Target value of the alignment.
-   *
-   * @return uint
-   */
-  uint align(const uint &src,
-             const uint &target);
+  // guaranteed unbiased
+  std::uniform_int_distribution<std::uint8_t> m_distribution;
 
   void setHeader();
 
   void setData();
 
-  void setData(const std::vector<std::byte> &data);
+  void setData(const std::vector<std::uint8_t> &data);
 
 };// end Section class
 } // end namespace pe_injector

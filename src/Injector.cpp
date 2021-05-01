@@ -1,10 +1,11 @@
 #include <Injector.hpp>
 
-#include <algorithm>
-#include <iostream>
-#include <sstream>
-#include <utility>      // std::pair
-#include <cstring>      // std::memcpy
+#include <algorithm> // std::lock_guard
+#include <iostream>  // std::cout
+#include <sstream>   // std::ostringstream
+#include <utility>   // std::pair
+#include <fstream>   // std::fstream::open / std::fstream::close
+#include <random>    // std::random_device
 
 using namespace peparse;
 
@@ -29,6 +30,8 @@ Injector::~Injector()
 void
 Injector::run(const bool &use_random_position)
 {
+  std::lock_guard<std::mutex> g(m_mutex);
+
   std::cout << m_input << " => " << m_output << std::endl;
 
   /* Parse input file */
@@ -69,12 +72,16 @@ Injector::run(const bool &use_random_position)
     ? m_pe->peHeader.nt.OptionalHeader.FileAlignment
     : m_pe->peHeader.nt.OptionalHeader64.FileAlignment;
 
+  std::uint32_t s_SectionAlignment
+    = (m_pe->peHeader.nt.OptionalMagic == NT_OPTIONAL_32_MAGIC)
+    ? m_pe->peHeader.nt.OptionalHeader.SectionAlignment
+    : m_pe->peHeader.nt.OptionalHeader64.SectionAlignment;
+
   /**
    * To avoid using null bytes, the injected section will have a number of
    * bytes multiple of the section alignment flag.
    */
-  const uint section_data_size
-    = s_FileAlignment * m_number_of_injected_bytes;
+  m_injection_info.length = s_FileAlignment * m_number_of_injected_bytes;
 
   if (use_random_position)
   {
@@ -176,16 +183,68 @@ Injector::run(const bool &use_random_position)
   /// In the header, our injected section will always be the last one, even
   /// if the order on disk is different (to avoid moving header bytes when
   /// saving the file).
-  /// TODO: find out how to get header offset using peparser
-  // m_injection_info.injected_section_header_offset = (
-  //     self.pe.sections[-1].get_file_offset()
-  // ) + SECTION_HEADER_SIZE
+  m_injection_info.injected_section_header_offset = getSectionHeaderOffset();
 
   dumpReplacedSectionInfo();
 
+  // New section will be placed after the last one in memory, to preserve
+  // functionality
+  auto s_Virtual_Offset = m_replaced_section.VirtualAddress + m_replaced_section.Misc.VirtualSize;
 
-  Section test(1,2,3,4,5);
+  m_injected_section = std::make_unique<Section>(
+    Section(m_injection_info.length,
+            s_FileAlignment,
+            s_SectionAlignment,
+            m_injection_info.injected_section_data_offset,
+            s_Virtual_Offset
+            ));
 
+  write_injected_file();
+
+}
+
+std::uint32_t
+Injector::getSectionHeaderOffset(const int &index)
+{
+  std::uint32_t offset = 0x0;
+
+  // get the offset to the NT headers
+  // "At location 0x3c, the stub has the file offset to the PE signature." [1]
+  offset += m_pe->peHeader.dos.e_lfanew;
+
+  // "After the MS-DOS stub, at the file offset specified at offset 0x3c, is a
+  //  4-byte signature that identifies the file as a PE format image file."
+  offset += 4;
+
+  // "At the beginning of an object file, or immediately after the signature
+  //  of an image file, is a standard COFF file header (...) "
+  offset += sizeof(file_header);
+
+  /**
+   * "Each row of the section table is, in effect, a section header. This table
+   *  immediately follows the optional header, if any. This positioning is
+   *  required because the file header does not contain a direct pointer to the
+   *  section table. Instead, the location of the section table is determined
+   *  by calculating the location of the first byte after the headers. Make
+   *  sure to use the size of the optional header as specified in the file
+   *  header." [1]
+   */
+  offset += m_pe->peHeader.nt.FileHeader.SizeOfOptionalHeader;
+
+  if (index == -1)
+  {
+    offset += (SECTION_HEADER_SIZE * m_injection_info.number_of_sections);
+  }
+  else if (index >= 0 && index < m_injection_info.number_of_sections)
+  {
+    offset += (SECTION_HEADER_SIZE * ((index) + 1));
+  }
+  else
+  {
+    throw std::runtime_error("Invalid index");
+  }
+
+  return offset;
 }
 
 bool
@@ -234,11 +293,17 @@ Injector::getSectionInfo(const uint &index,
 void
 Injector::dumpReplacedSectionInfo()
 {
-   std::cout
-    << "[@] Injecting section at index " << m_injection_info.injected_section_idx
-    << " out of [0, " << m_injection_info.number_of_sections-1
-    << "] on offset 0x" << std::hex << m_injection_info.injected_section_data_offset
-  << std::endl;
+
+  std::cout << "\t\t[*] @@@@@@@ COMPUTED INJECTION DATA! @@@@@@@" << std::endl;
+
+  std::cout
+    << "\t [@] Injecting section at index " << m_injection_info.injected_section_idx
+    << "/" << m_injection_info.number_of_sections-1
+    << ": { HeaderOffset: 0x"
+    << std::hex << m_injection_info.injected_section_header_offset
+    << " | PointerToRawData: 0x" << m_injection_info.injected_section_data_offset
+    << " | SizeOfRawData: " << std::dec << m_injection_info.length
+  << "};" << std::endl;
 
   std::ostringstream name;
   for (auto i: m_replaced_section.Name)
@@ -246,15 +311,22 @@ Injector::dumpReplacedSectionInfo()
     name << i;
   }
 
+  if (m_injection_info.injected_section_idx == m_injection_info.number_of_sections)
+  {
+    std::cout << "\t [*] Injecting after last section: {";
+  } else {
+    std::cout << "\t [*] Replacing section: {";
+  }
+
   std::cout
-    << "\t [*] Name: " << name.str()
+    << " Name: " << name.str()
     << " | Misc_VirtualSize: 0x" << std::hex << m_replaced_section.Misc.VirtualSize
     << " | VirtualAddress: 0x" << m_replaced_section.VirtualAddress
     << " | SizeOfRawData: 0x" << m_replaced_section.SizeOfRawData
     << " | PointerToRawData: 0x" << m_replaced_section.PointerToRawData
     << " | NextSectionExpectedOffset: 0x"
       << m_replaced_section.SizeOfRawData + m_replaced_section.PointerToRawData
-  << std::endl;
+  << "};" << std::endl;
 }
 
 void
@@ -311,7 +383,7 @@ Injector::dumpPEInfo()
         << " | VirtualAddress: 0x" << s.VirtualAddress
         << " | SizeOfRawData: 0x" << s.SizeOfRawData
         << " | PointerToRawData: 0x" << s.PointerToRawData
-        // << "| HeaderOffset: 0x" << s.HeaderOffset
+        // << "| HeaderOffset: 0x" << getSectionHeaderOffset(*n)
         << " | NextSectionExpectedOffset: 0x"
           << s.SizeOfRawData + s.PointerToRawData
         << " | Data: 0x" << ((data) ? data->bufLen : 0)
@@ -320,6 +392,102 @@ Injector::dumpPEInfo()
       return 0;
     },
     &m_injection_info.number_of_sections); // the address we put as the last argument to IterSec is passes as the first arg to our callback
+}
+
+void
+Injector::write_injected_file()
+{
+  std::lock_guard<std::mutex> g(m_mutex);
+
+  const uint old_sections_offset
+    = m_injection_info.injected_section_data_offset + m_injection_info.length;
+
+  std::fstream output_file;
+  output_file.open (m_output, std::fstream::out | std::fstream::trunc);
+
+  if (!output_file.is_open())
+  {
+    throw std::runtime_error("Could not open output file.");
+  }
+
+  output_file.write(reinterpret_cast<const char*>(m_pe->fileBuffer->buf),
+                    m_pe->fileBuffer->bufLen);
+
+  const auto generated_bytes
+    = m_injected_section->gen_padding_bytes(m_injection_info.length + SECTION_HEADER_SIZE);
+  for (auto &b : generated_bytes)
+  {
+    output_file << b;
+  }
+
+  /* Inject HEADER */
+
+  std::cout
+    << "\t\t[@@] Injecting " << m_injected_section->getHeaderSize()
+    << " bytes long header at 0x" << m_injection_info.injected_section_header_offset
+    << std::endl;
+
+  output_file.seekp(m_injection_info.injected_section_header_offset);
+  const auto header_data =  m_injected_section->getHeaderData();
+  for (auto &b : header_data)
+  {
+    output_file << b;
+  }
+
+  // Add old stuff after new header
+  std::cout << "\t\t[@@] From OLD at 0x"
+    << std::hex << m_injection_info.injected_section_header_offset
+    << " to NEW at 0x" << output_file.tellp()
+  << std::endl;
+
+  // output_file
+  //   << m_pe->fileBuffer->buf + m_injection_info.injected_section_header_offset;
+  output_file.write(reinterpret_cast<const char*>(m_pe->fileBuffer->buf + m_injection_info.injected_section_header_offset),
+                    m_pe->fileBuffer->bufLen - + m_injection_info.injected_section_header_offset);
+
+
+  /* Inject SECTION DATA */
+
+  std::cout
+    << "\t\t[@@] Injecting section data at 0x"
+      << std::hex << m_injection_info.injected_section_data_offset
+  << std::endl;
+
+  output_file.seekp(m_injection_info.injected_section_data_offset);
+  const auto section_data = m_injected_section->getData();
+  for (auto &b : section_data)
+  {
+    output_file << b;
+  }
+
+  // Slide old data back
+  std::cout
+    << "\t\t[@@] From OLD at 0x"
+      <<  std::hex << m_injection_info.injected_section_data_offset
+    << " to NEW at 0x" << old_sections_offset // We get bytes from the old offset
+  << std::endl;
+
+  /**
+   * We get bytes from the old offset
+   * If we are injecting at the end, 'self.injected_section_data_offset' is
+   * greater than 'input_file' size. Consequently, 'input_file.read()' will
+   * return a null byte.
+   */
+  output_file.seekp(old_sections_offset);
+
+  auto data_offset
+    = m_pe->fileBuffer->buf + m_injection_info.injected_section_data_offset;
+  auto n_read
+    = m_pe->fileBuffer->bufLen - m_injection_info.injected_section_data_offset;
+
+  output_file
+    << data_offset;
+
+  output_file.write(reinterpret_cast<const char*>(data_offset),
+                    n_read);
+
+  // Close file
+  output_file.close();
 }
 
 }; // end namespacepe_injector

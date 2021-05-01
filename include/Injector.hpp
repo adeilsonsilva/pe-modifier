@@ -17,8 +17,9 @@
 #include <Section.hpp>
 #include <parser-library/parse.h>
 
-#include <string>
-#include <random>
+#include <string> // std::string
+#include <memory> // std::unique_ptr
+#include <mutex>  // std::mutex
 
 namespace pe_injector {
 
@@ -34,6 +35,8 @@ public:
 
   void run(const bool &use_random_position=true);
 
+  std::uint32_t getSectionHeaderOffset(const int &index=-1);
+
   void dumpPEInfo();
 
   void dumpReplacedSectionInfo();
@@ -42,6 +45,8 @@ public:
 
   bool getSectionInfo(const uint &index,
                       peparse::image_section_header &target);
+
+  void write_injected_file();
 
 private:
 
@@ -71,9 +76,16 @@ private:
     /// Offset in the raw file of the injected SECTION DATA
     uint injected_section_data_offset;
 
+    /// Size of the data of the injected section
+    uint length;
+
   } m_injection_info;
 
   peparse::image_section_header m_replaced_section;
+
+  std::unique_ptr<Section> m_injected_section;
+
+  std::mutex m_mutex;
 
 };// end Section class
 } // end namespace pe_injector
