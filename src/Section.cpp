@@ -82,22 +82,20 @@ Section::setHeader()
             m_VirtualSize.end(),
             m_Header.begin() + 8);
 
-  /* Copy uint values converting to little endian */
+  m_Header.at(12) = (m_VirtualAddress >> (8*0));
+  m_Header.at(13) = (m_VirtualAddress >> (8*1));
+  m_Header.at(14) = (m_VirtualAddress >> (8*2));
+  m_Header.at(15) = (m_VirtualAddress >> (8*3));
 
-  m_Header.at(12) = (m_VirtualAddress >> (8*0)) & 0xff;
-  m_Header.at(13) = (m_VirtualAddress >> (8*1)) & 0xff;
-  m_Header.at(14) = (m_VirtualAddress >> (8*2)) & 0xff;
-  m_Header.at(15) = (m_VirtualAddress >> (8*3)) & 0xff;
+  m_Header.at(16) = (m_SizeOfRawData >> (8*0));
+  m_Header.at(17) = (m_SizeOfRawData >> (8*1));
+  m_Header.at(18) = (m_SizeOfRawData >> (8*2));
+  m_Header.at(19) = (m_SizeOfRawData >> (8*3));
 
-  m_Header.at(16) = (m_SizeOfRawData >> (8*3)) & 0xff;
-  m_Header.at(17) = (m_SizeOfRawData >> (8*2)) & 0xff;
-  m_Header.at(18) = (m_SizeOfRawData >> (8*1)) & 0xff;
-  m_Header.at(19) = (m_SizeOfRawData >> (8*0)) & 0xff;
-
-  m_Header.at(20) = (m_PointerToRawData >> (8*3)) & 0xff;
-  m_Header.at(21) = (m_PointerToRawData >> (8*2)) & 0xff;
-  m_Header.at(22) = (m_PointerToRawData >> (8*1)) & 0xff;
-  m_Header.at(23) = (m_PointerToRawData >> (8*0)) & 0xff;
+  m_Header.at(20) = (m_PointerToRawData >> (8*0));
+  m_Header.at(21) = (m_PointerToRawData >> (8*1));
+  m_Header.at(22) = (m_PointerToRawData >> (8*2));
+  m_Header.at(23) = (m_PointerToRawData >> (8*3));
 
   std::copy(m_PointerToRelocations.begin(),
             m_PointerToRelocations.end(),
@@ -127,7 +125,7 @@ Section::setData()
 
   m_Data.clear();
   m_Data.reserve(m_payload.size() + padding.size());
-  m_Data.insert( m_Data.begin(), m_payload.begin(), m_payload.end() );
+  m_Data.insert( m_Data.end(), m_payload.begin(), m_payload.end() );
   m_Data.insert( m_Data.end(), padding.begin(), padding.end() );
 }
 

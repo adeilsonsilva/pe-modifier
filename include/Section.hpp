@@ -28,6 +28,7 @@ namespace pe_injector {
  *
  * [1] https://docs.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-image_section_header
  * [2] https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#section-table-section-headers
+ * [3] https://docs.microsoft.com/en-us/windows/win32/debug/pe-format#optional-header-image-only
  */
 class Section
 {
@@ -73,6 +74,16 @@ public:
   inline uint getHeaderSize() const { return m_Header.size(); }
   inline auto getHeaderData() const { return m_Header; }
   inline auto getData()       const { return m_Data; }
+
+
+  /**
+   * @brief Returns the VirtualAddress of the section after the injected one.
+   *        Normally it would be VirtualSize + VirtualAddress, but our
+   *        VirtualSize is 0.
+   *
+   * @return uint
+   */
+  inline uint getNextSectionVirtualAddress() const { return m_VirtualAddress; }
 
   /**
    * @brief Method to compute section alignments.
