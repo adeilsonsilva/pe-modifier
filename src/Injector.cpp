@@ -570,8 +570,7 @@ Injector::write_injected_file()
   auto n_read
     = m_pe->fileBuffer->bufLen - m_injection_info.injected_section_data_offset;
 
-  // output_file
-  //   << data_offset;
+  std::cout << "buflen: " << std::dec << m_pe->fileBuffer->bufLen << " | n_read: " << n_read << std::endl;
 
   output_file.write(reinterpret_cast<const char*>(data_offset),
                     n_read);
@@ -585,13 +584,6 @@ void
 Injector::fix_file()
 {
   std::lock_guard<std::mutex> g(m_mutex);
-
-  /* If we are injecting after the last section we don't need to fix anything */
-  if (m_injection_info.injected_section_idx ==
-      m_injection_info.number_of_sections)
-  {
-    return;
-  }
 
   std::fstream output_file;
   output_file.open (m_output, std::fstream::in | std::fstream::out | std::fstream::binary);

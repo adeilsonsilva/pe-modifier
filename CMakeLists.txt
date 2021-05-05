@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
-project(pe-injector)
+project(pe_injector)
 
 if (CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
   set(CMAKE_INSTALL_PREFIX ${CMAKE_CURRENT_SOURCE_DIR}/build/install CACHE PATH "Default install directory" FORCE)
@@ -39,16 +39,26 @@ endif ()
 # while compiling all the source code
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/dependencies/pe-parse/build/include)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-find_package(pe-parse REQUIRED PATHS dependencies/pe-parse/build/lib/cmake/)
+find_package(pe-parse REQUIRED)
+find_package(Python COMPONENTS Interpreter Development REQUIRED)
+find_package(pybind11 REQUIRED)
 
-add_library(SECTION src/Section.cpp)
-add_library(INJECTOR src/Injector.cpp)
+add_library(_section src/Section.cpp)
+add_library(_injector src/Injector.cpp)
+pybind11_add_module(${PROJECT_NAME}_py pybind11.cpp)
 
 add_executable(${PROJECT_NAME} main.cpp)
-target_link_libraries(INJECTOR SECTION)
-target_link_libraries(${PROJECT_NAME} INJECTOR)
+
+target_link_libraries(_injector _section)
+target_link_libraries(${PROJECT_NAME} _injector)
 target_link_libraries(${PROJECT_NAME} pe-parse::pe-parser-library)
 target_compile_options(${PROJECT_NAME} PRIVATE ${PEADDRCONV_CXXFLAGS})
+
+# https://github.com/pybind/pybind11/issues/387
+target_link_libraries(${PROJECT_NAME}_py PRIVATE _section)
+
+# set_property(TARGET ${PROJECT_NAME}_py PROPERTY POSITION_INDEPENDENT_CODE ON)
 
 install(TARGETS ${PROJECT_NAME} DESTINATION "bin")

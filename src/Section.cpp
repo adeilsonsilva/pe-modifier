@@ -142,12 +142,13 @@ Section::generate_payload(const uint &size,
 {
   std::vector<std::uint8_t> result(size);
 
-  for (int n = 0; n < size; n++)
+  int n = 0;
+  while (n < size)
   {
     const uint number = m_distribution(m_rng);
     if (number >= low && number <= high)
     {
-      result.at(n) = number;
+      result.at(n++) = number;
     }
   }
 
