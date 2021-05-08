@@ -204,7 +204,8 @@ class Injector:
     print("\n\t\t[*] @@@@@@@ AFTER INJECTION @@@@@@@@")
     self.print_debug_info()
 
-    return self.buffer
+    self.buffer.seek(0)
+    return self.buffer.read()
 
   def write_buffer(self):
     """
