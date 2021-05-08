@@ -11,7 +11,7 @@ exploits another vulnerability of Nataraj's method, as it discards
 bytes from the end of the file when transforming them into images
 """
 
-from .Section import InjectedSection
+from src.Section import InjectedSection
 
 import io
 import numpy as np
