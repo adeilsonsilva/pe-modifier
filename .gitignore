@@ -1,0 +1,3 @@
+build/
+dependencies/**/build/
+src/__pycache__
