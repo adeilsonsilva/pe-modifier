@@ -192,20 +192,20 @@ class Injector:
     # Fix sections offset
     self.fix_file()
 
+    self.buffer.seek(0)
+    final_data = self.buffer.read()
+
     if (self.output_path is not None):
       output_file = open(self.output_path, 'wb')
-      self.buffer.seek(0)
-      output_file.write(self.buffer.read())
+      output_file.write(final_data)
       output_file.close()
 
     # Show after save
-    self.buffer.seek(0)
-    self.pe = pefile.PE(data=self.buffer.read())
+    self.pe = pefile.PE(data=final_data)
     print("\n\t\t[*] @@@@@@@ AFTER INJECTION @@@@@@@@")
     self.print_debug_info()
 
-    self.buffer.seek(0)
-    return self.buffer.read()
+    return final_data
 
   def write_buffer(self):
     """
