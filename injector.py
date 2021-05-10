@@ -27,26 +27,42 @@ class PEInjector:
   def __init__(self,
                input_path,
                n_bytes,
+               n_sections_to_inject=1,
                middleware_path=None,
                output_path=None,
                verbose=False):
 
-    self.input_path      = input_path
-    self.middleware_path = middleware_path
-    self.output_path     = output_path
-    self.n_bytes         = n_bytes
-    self.buffer          = io.BytesIO()
-    self.verbose         = verbose
+    self.input_path           = input_path
+    self.middleware_path      = middleware_path
+    self.output_path          = output_path
+    self.n_bytes              = n_bytes
+    self.n_sections_to_inject = n_sections_to_inject
+    self.buffer               = io.BytesIO()
+    self.verbose              = verbose
 
     return
 
   def run(self, randomly=True):
+    # Load input file and set basic file info
+    self.pe = pefile.PE(name=self.input_path, fast_load=True)
+
+    # Inject first section
+    pe_data = self.__inject(randomly)
+
+    injections = 1
+
+    while injections < self.n_sections_to_inject:
+      self.pe = pefile.PE(data=pe_data) # Reload pe info using injection result
+      pe_data = self.__inject(randomly) # Run injection again
+
+      injections += 1
+
+    return pe_data
+
+  def __inject(self, randomly=True):
     """
         Main method to inject new sections at the file.
     """
-
-    # Load input file and set basic file info
-    self.pe = pefile.PE(name=self.input_path, fast_load=True)
 
     if self.verbose:
       print("\t\t[*] @@@@@@@ BEFORE INJECTION @@@@@@@")
@@ -368,7 +384,7 @@ class PEInjector:
       if _PTRD >= self.injected_section_data_offset:
         fixed_PTRD += self.injected_section_length
         if self.verbose:
-          print(" => {}".format(hex(fixed_PTRD)))
+          print(" => {}".format(hex(fixed_PTRD)), end='')
 
       self.buffer.seek(offset+20)
       self.buffer.write(fixed_PTRD.to_bytes(4, 'little'))
