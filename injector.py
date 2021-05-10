@@ -389,7 +389,8 @@ class PEInjector:
       self.buffer.seek(offset+20)
       self.buffer.write(fixed_PTRD.to_bytes(4, 'little'))
 
-      print()
+      if self.verbose:
+        print()
 
     return
 
