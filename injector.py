@@ -190,9 +190,17 @@ class PEInjector:
     payload = None
     if (self.middleware_path is not None):
       middleware_data = np.fromfile(self.middleware_path, dtype='uint8')
-      offset = random.randint(0,
-                              middleware_data.shape[0] - self.injected_section_length - 1)
-      payload = middleware_data[offset:offset+self.injected_section_length]
+      source_length = middleware_data.shape[0]
+      if (self.injected_section_length < source_length):
+        # Get a random offset to extract data from
+        offset = random.randint(0,
+                                source_length - self.injected_section_length-1)
+        payload = middleware_data[offset:offset+self.injected_section_length]
+      else:
+        # The source is smaller than the amount we need to inject.
+        # Just repeat it up to the modulo
+        remaining = self.injected_section_length % source_length
+        payload   = np.append(middleware_data, middleware_data[:remaining])
 
     # Compute section data
     self.injected_section = InjectedSection(
