@@ -11,7 +11,7 @@ exploits another vulnerability of Nataraj's method, as it discards
 bytes from the end of the file when transforming them into images
 """
 
-from src.Section import InjectedSection
+from .section import InjectedSection
 
 import io
 import numpy as np
@@ -22,19 +22,21 @@ import random
 # The size of a section header in the file
 SECTION_HEADER_SIZE = 40
 
-class Injector:
+class PEInjector:
 
   def __init__(self,
                input_path,
                n_bytes,
                middleware_path=None,
-               output_path=None):
+               output_path=None,
+               verbose=False):
 
     self.input_path      = input_path
     self.middleware_path = middleware_path
     self.output_path     = output_path
     self.n_bytes         = n_bytes
     self.buffer          = io.BytesIO()
+    self.verbose         = verbose
 
     return
 
@@ -46,8 +48,9 @@ class Injector:
     # Load input file and set basic file info
     self.pe = pefile.PE(name=self.input_path, fast_load=True)
 
-    print("\t\t[*] @@@@@@@ BEFORE INJECTION @@@@@@@")
-    self.print_debug_info()
+    if self.verbose:
+      print("\t\t[*] @@@@@@@ BEFORE INJECTION @@@@@@@")
+      self.print_debug_info()
 
     # TODO: test edge case
     # We get the miminum between NumberOfSections and the size of the
@@ -110,8 +113,8 @@ class Injector:
                       and (self.pe.sections[section_idx].SizeOfRawData != 0)
                   ):
                       correct_idx = section_idx
-
-          print("\n[*] Changing from idx {} to {} because it is virtual".format(self.injected_section_idx, correct_idx))
+          if self.verbose:
+            print("\n[*] Changing from idx {} to {} because it is virtual".format(self.injected_section_idx, correct_idx))
           self.injected_section_idx = correct_idx
 
       # We set the data offset in the file at the same position of the
@@ -130,41 +133,42 @@ class Injector:
     # functionality
     self.injected_section_virtual_offset = self.pe.sections[-1].VirtualAddress + self.pe.sections[-1].Misc_VirtualSize
 
-    print("\n\t\t[*] @@@@@@@ COMPUTED INJECTION DATA! @@@@@@@")
-    print(
-      "\t [@] Injecting section at index {}/{}:{{ HeaderOffset: {} | " \
-      "PointerToRawData: {} | SizeOfRawData: {} | VirtualAddress: {} }}"
-      .format(
-          self.injected_section_idx,
-          self.pe.FILE_HEADER.NumberOfSections-1,
-          hex(self.injected_section_header_offset),
-          hex(self.injected_section_data_offset),
-          self.injected_section_length,
-          hex(self.injected_section_virtual_offset)
+    if self.verbose:
+      print("\n\t\t[*] @@@@@@@ COMPUTED INJECTION DATA! @@@@@@@")
+      print(
+        "\t [@] Injecting section at index {}/{}:{{ HeaderOffset: {} | " \
+        "PointerToRawData: {} | SizeOfRawData: {} | VirtualAddress: {} }}"
+        .format(
+            self.injected_section_idx,
+            self.pe.FILE_HEADER.NumberOfSections-1,
+            hex(self.injected_section_header_offset),
+            hex(self.injected_section_data_offset),
+            self.injected_section_length,
+            hex(self.injected_section_virtual_offset)
+        )
       )
-    )
 
-    if (injecting_at_the_end):
-      print("\t [*] Injecting after last section: { ", end='')
-    else:
-      print("\t [*] Replacing section: { ", end='')
+      if (injecting_at_the_end):
+        print("\t [*] Injecting after last section: { ", end='')
+      else:
+        print("\t [*] Replacing section: { ", end='')
 
-    print(
-      "Name: {} | " \
-      "VirtualSize: {} | " \
-      "VirtualAddress: {} | " \
-      "SizeOfRawData: {} | " \
-      "PointerToRawData: {} | " \
-      "NextSectionExpectedOffset: {} }}\n" \
-      .format(
-          self.replaced_section.Name.decode('utf-8') \
-          , self.replaced_section.Misc_VirtualSize \
-          , self.replaced_section.VirtualAddress \
-          , self.replaced_section.SizeOfRawData \
-          , self.replaced_section.PointerToRawData \
-          , hex(self.replaced_section.PointerToRawData + self.replaced_section.SizeOfRawData)
+      print(
+        "Name: {} | " \
+        "VirtualSize: {} | " \
+        "VirtualAddress: {} | " \
+        "SizeOfRawData: {} | " \
+        "PointerToRawData: {} | " \
+        "NextSectionExpectedOffset: {} }}\n" \
+        .format(
+            self.replaced_section.Name.decode('utf-8') \
+            , self.replaced_section.Misc_VirtualSize \
+            , self.replaced_section.VirtualAddress \
+            , self.replaced_section.SizeOfRawData \
+            , self.replaced_section.PointerToRawData \
+            , hex(self.replaced_section.PointerToRawData + self.replaced_section.SizeOfRawData)
+        )
       )
-    )
 
     # Get a random chunk of data from middleware if one is given
     payload = None
@@ -182,7 +186,8 @@ class Injector:
       self.injected_section_data_offset,
       # New section will be placed after the last one in memory, to keep functionality
       self.pe.sections[-1].VirtualAddress + self.pe.sections[-1].Misc_VirtualSize,
-      payload
+      payload,
+      verbose=self.verbose
     )
 
 
@@ -202,8 +207,10 @@ class Injector:
 
     # Show after save
     self.pe = pefile.PE(data=final_data)
-    print("\n\t\t[*] @@@@@@@ AFTER INJECTION @@@@@@@@")
-    self.print_debug_info()
+
+    if self.verbose:
+      print("\n\t\t[*] @@@@@@@ AFTER INJECTION @@@@@@@@")
+      self.print_debug_info()
 
     return final_data
 
@@ -227,35 +234,38 @@ class Injector:
     )
 
     # Inject HEADER
-    print("\t[@@] Injecting {} bytes long header at {}.".format(
-        len(self.injected_section.header),
-        hex(self.injected_section_header_offset)
-    ))
-    # print(self.injected_section.header)
+    if self.verbose:
+      print("\t[@@] Injecting {} bytes long header at {}.".format(
+          len(self.injected_section.header),
+          hex(self.injected_section_header_offset)
+      ))
     self.buffer.seek(self.injected_section_header_offset)
     self.buffer.write(self.injected_section.header)
 
     # Add old stuff after new header
-    print("\t[@@] From OLD at {} to NEW at {}.".format(
-        hex(self.injected_section_header_offset),
-        hex(self.buffer.tell())
-    ))
+    if self.verbose:
+      print("\t[@@] From OLD at {} to NEW at {}.".format(
+          hex(self.injected_section_header_offset),
+          hex(self.buffer.tell())
+      ))
     input_file.seek(self.injected_section_header_offset)
     self.buffer.write(input_file.read())
 
     # Inject NEW SECTION
-    print("\t[@@] Injecting section data at {}.".format(
-        hex(self.injected_section_data_offset)
-    ))
+    if self.verbose:
+      print("\t[@@] Injecting section data at {}.".format(
+          hex(self.injected_section_data_offset)
+      ))
     self.buffer.seek(self.injected_section_data_offset)
     self.buffer.write(self.injected_section.data)
 
     # Slide old data back
-    print("\t[@@] From OLD at {} to NEW at {}.".format(
-        # We get bytes from the old offset
-        hex(self.injected_section_data_offset),
-        hex(old_sections_offset)
-    ))
+    if self.verbose:
+      print("\t[@@] From OLD at {} to NEW at {}.".format(
+          # We get bytes from the old offset
+          hex(self.injected_section_data_offset),
+          hex(old_sections_offset)
+      ))
     # We get bytes from the old offset
     # If we are injecting at the end, 'self.injected_section_data_offset' is
     # greater than 'input_file' size. Consequently, 'input_file.read()' will
@@ -275,7 +285,8 @@ class Injector:
         structure required by the operating system.
     """
 
-    print("\n\t\t[*] @@@@@@@ FIXING FILE! @@@@@@@")
+    if self.verbose:
+      print("\n\t\t[*] @@@@@@@ FIXING FILE! @@@@@@@")
 
     #"At location 0x3c, the stub has the file offset to the PE signature. This
     # information enables Windows to properly execute the image file, even
@@ -292,7 +303,8 @@ class Injector:
     _NoS               = int.from_bytes(self.buffer.read(2), 'little')
     f_NumberOfSections = self.pe.FILE_HEADER.NumberOfSections + 1
 
-    print("\t[+] [{}] | NumberOfSections: {} => {}".format(hex(NoS_offset), _NoS, f_NumberOfSections))
+    if self.verbose:
+      print("\t[+] [{}] | NumberOfSections: {} => {}".format(hex(NoS_offset), _NoS, f_NumberOfSections))
 
     self.buffer.seek(NoS_offset)
     self.buffer.write(f_NumberOfSections.to_bytes(2, 'little'))
@@ -311,7 +323,8 @@ class Injector:
       self.injected_section.VirtualSize + self.injected_section.VirtualAddress, self.pe.OPTIONAL_HEADER.SectionAlignment
     )
 
-    print("\t[+] [{}] | SizeOfImage: {} => {}".format(hex(SoI_offset), _SoI, f_SizeOfImage))
+    if self.verbose:
+      print("\t[+] [{}] | SizeOfImage: {} => {}".format(hex(SoI_offset), _SoI, f_SizeOfImage))
 
     self.buffer.seek(SoI_offset)
     self.buffer.write(f_SizeOfImage.to_bytes(4, 'little'))
@@ -328,7 +341,8 @@ class Injector:
     self.buffer.seek(SoH_offset)
     _SoH = int.from_bytes(self.buffer.read(4), 'little')
 
-    print("\t[+] [{}] | SizeOfHeaders: {} => {}".format(hex(SoH_offset), _SoH, f_SizeOfHeaders))
+    if self.verbose:
+      print("\t[+] [{}] | SizeOfHeaders: {} => {}".format(hex(SoH_offset), _SoH, f_SizeOfHeaders))
 
     self.buffer.seek(SoH_offset)
     self.buffer.write(f_SizeOfHeaders.to_bytes(4, 'little'))
@@ -346,13 +360,15 @@ class Injector:
       self.buffer.seek(offset+20)
       _PTRD = int.from_bytes(self.buffer.read(4), 'little')
 
-      print("[{}] | {} | {} | PointerToRawData: {}".format(section_idx, hex(offset), section.Name.decode('utf-8'), hex(_PTRD)), end='')
+      if self.verbose:
+        print("[{}] | {} | {} | PointerToRawData: {}".format(section_idx, hex(offset), section.Name.decode('utf-8'), hex(_PTRD)), end='')
 
       fixed_PTRD = _PTRD
 
       if _PTRD >= self.injected_section_data_offset:
         fixed_PTRD += self.injected_section_length
-        print(" => {}".format(hex(fixed_PTRD)))
+        if self.verbose:
+          print(" => {}".format(hex(fixed_PTRD)))
 
       self.buffer.seek(offset+20)
       self.buffer.write(fixed_PTRD.to_bytes(4, 'little'))

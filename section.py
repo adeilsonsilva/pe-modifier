@@ -19,7 +19,8 @@ class InjectedSection:
                 section_alignment,
                 raw_offset,
                 virtual_offset,
-                payload=None):
+                payload=None,
+                verbose=False):
     """
       Section constructor.
 
@@ -27,12 +28,15 @@ class InjectedSection:
       payload_size  --
     """
 
+    self.verbose = verbose
+
     # Generate random payload if none is given
     self.payload_size = payload_size
     if (payload is None):
       self.payload = self.generate_payload(payload_size)
     else:
-      print("\t[@@] Using {} bytes long payload".format(payload.shape[0]))
+      if verbose:
+        print("\t[@@] Using {} bytes long payload".format(payload.shape[0]))
       self.payload = payload.tobytes()
 
 
@@ -153,30 +157,31 @@ class InjectedSection:
     return len(self.get_full_section())
 
   def set_header(self):
-    print(
-        "\n\t [+] InjectedSection: {{ Name: {} | " \
-        "VirtualSize: {} | " \
-        "VirtualAddress: {} | " \
-        "SizeOfRawData: {} | " \
-        "PointerToRawData: {} | " \
-        "PointerToRelocations: {} | " \
-        "PointerToLinenumbers: {} | " \
-        "NumberOfRelocations: {} | " \
-        "NumberOfLinenumbers: {} | " \
-        "Characteristics: {} }}\n" \
-        .format(
-            self.Name \
-            , self.VirtualSize.to_bytes(4, 'little') \
-            , self.VirtualAddress.to_bytes(4, 'little') \
-            , self.SizeOfRawData.to_bytes(4, 'little') \
-            , self.PointerToRawData.to_bytes(4, 'little') \
-            , self.PointerToRelocations \
-            , self.PointerToLinenumbers \
-            , self.NumberOfRelocations \
-            , self.NumberOfLinenumbers \
-            , self.characteristics
-        )
-    )
+    if self.verbose:
+      print(
+          "\n\t [+] InjectedSection: {{ Name: {} | " \
+          "VirtualSize: {} | " \
+          "VirtualAddress: {} | " \
+          "SizeOfRawData: {} | " \
+          "PointerToRawData: {} | " \
+          "PointerToRelocations: {} | " \
+          "PointerToLinenumbers: {} | " \
+          "NumberOfRelocations: {} | " \
+          "NumberOfLinenumbers: {} | " \
+          "Characteristics: {} }}\n" \
+          .format(
+              self.Name \
+              , self.VirtualSize.to_bytes(4, 'little') \
+              , self.VirtualAddress.to_bytes(4, 'little') \
+              , self.SizeOfRawData.to_bytes(4, 'little') \
+              , self.PointerToRawData.to_bytes(4, 'little') \
+              , self.PointerToRelocations \
+              , self.PointerToLinenumbers \
+              , self.NumberOfRelocations \
+              , self.NumberOfLinenumbers \
+              , self.characteristics
+          )
+      )
 
     self.header = self.Name \
         + self.VirtualSize.to_bytes(4, 'little') \
