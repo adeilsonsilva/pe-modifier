@@ -44,7 +44,8 @@ class PEInjector:
 
   def run(self, randomly=True):
     # Load input file and set basic file info
-    self.pe = pefile.PE(name=self.input_path, fast_load=True)
+    self.pe           = pefile.PE(name=self.input_path, fast_load=True)
+    self.input_buffer = open(self.input_path, 'rb')
 
     # Inject first section
     pe_data = self.__inject(randomly)
@@ -52,8 +53,13 @@ class PEInjector:
     injections = 1
 
     while injections < self.n_sections_to_inject:
-      self.pe = pefile.PE(data=pe_data) # Reload pe info using injection result
-      pe_data = self.__inject(randomly) # Run injection again
+      # Reopen buffer with injected data
+      self.input_buffer = io.BytesIO()
+      self.input_buffer.write(pe_data)
+      # Reload pe info using injection result
+      self.pe = pefile.PE(data=pe_data)
+      # Run injection again
+      pe_data = self.__inject(randomly)
 
       injections += 1
 
@@ -214,6 +220,16 @@ class PEInjector:
       verbose=self.verbose
     )
 
+    # If we are replacing the first section we need to take into account the
+    # padding between the end of the section and the start of the data
+    if self.injected_section_idx == 0:
+      end_new_header = self.injected_section_header_offset + SECTION_HEADER_SIZE
+      padding = \
+        self.injected_section_data_offset - self.injected_section_header_offset
+      if padding > 0x0:
+        # Fix data offset of new section
+        self.injected_section.PointerToRawData = end_new_header + padding
+        self.injected_section_data_offset = self.injected_section.PointerToRawData
 
     # Create output file
     self.write_buffer()
@@ -245,10 +261,8 @@ class PEInjector:
 
     old_sections_offset = self.injected_section_data_offset + self.injected_section.SizeOfRawData
 
-    input_file = open(self.input_path, 'rb')
-
     # Copy contents from original file
-    self.buffer.write(input_file.read())
+    self.buffer.write(self.input_buffer.read())
     # Append new bytes to increase file size
     self.buffer.write(
         self.injected_section.gen_padding_bytes(
@@ -272,8 +286,8 @@ class PEInjector:
           hex(self.injected_section_header_offset),
           hex(self.buffer.tell())
       ))
-    input_file.seek(self.injected_section_header_offset)
-    self.buffer.write(input_file.read())
+    self.input_buffer.seek(self.injected_section_header_offset)
+    self.buffer.write(self.input_buffer.read())
 
     # Inject NEW SECTION
     if self.verbose:
@@ -294,12 +308,12 @@ class PEInjector:
     # If we are injecting at the end, 'self.injected_section_data_offset' is
     # greater than 'input_file' size. Consequently, 'input_file.read()' will
     # return a null byte.
-    input_file.seek(self.injected_section_data_offset)
+    self.input_buffer.seek(self.injected_section_data_offset)
     self.buffer.seek(old_sections_offset)
-    self.buffer.write(input_file.read())
+    self.buffer.write(self.input_buffer.read())
 
     # Close files
-    input_file.close()
+    self.input_buffer.close()
 
     return
 
@@ -357,7 +371,7 @@ class PEInjector:
     # "The combined size of an MS-DOS stub, PE header, and section headers
     #  rounded up to a multiple of FileAlignment." [3]
     f_SizeOfHeaders = self.injected_section.align(
-      self.pe.OPTIONAL_HEADER.SizeOfHeaders+SECTION_HEADER_SIZE,
+      self.injected_section_header_offset+SECTION_HEADER_SIZE,
       self.pe.OPTIONAL_HEADER.FileAlignment
     )
 
