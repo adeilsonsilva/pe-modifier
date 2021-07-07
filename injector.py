@@ -136,7 +136,7 @@ class PEInjector:
                   ):
                       correct_idx = section_idx
           if self.verbose:
-            print("\n[*] Changing from idx {} to {} because it is virtual".format(self.injected_section_idx, correct_idx))
+            print("\n[*] Changing from idx {} to {} because it is virtual or misaligned".format(self.injected_section_idx, correct_idx))
           self.injected_section_idx = correct_idx
 
       # We set the data offset in the file at the same position of the
@@ -222,14 +222,15 @@ class PEInjector:
 
     # If we are replacing the first section we need to take into account the
     # padding between the end of the section and the start of the data
-    if self.injected_section_idx == 0:
-      end_new_header = self.injected_section_header_offset + SECTION_HEADER_SIZE
-      padding = \
-        self.injected_section_data_offset - self.injected_section_header_offset
-      if padding > 0x0:
-        # Fix data offset of new section
-        self.injected_section.PointerToRawData = end_new_header + padding
-        self.injected_section_data_offset = self.injected_section.PointerToRawData
+    padding = \
+        self.pe.sections[0].PointerToRawData - self.pe.sections[0].get_file_offset()
+    end_new_header = self.injected_section_header_offset + SECTION_HEADER_SIZE
+    self.min_data_init = end_new_header + padding
+
+    if self.injected_section_idx == 0 and padding > 0x0:
+      # Fix data offset of new section
+      self.injected_section.PointerToRawData = end_new_header + padding
+      self.injected_section_data_offset = self.injected_section.PointerToRawData
 
     # Create output file
     self.write_buffer()
@@ -404,7 +405,13 @@ class PEInjector:
       fixed_PTRD = _PTRD
 
       if _PTRD >= self.injected_section_data_offset:
+        # Increases PTRD by the size of the injected data in case it is after it
         fixed_PTRD += self.injected_section_length
+        if self.verbose:
+          print(" => {}".format(hex(fixed_PTRD)), end='')
+      elif _PTRD <= self.min_data_init:
+        # Fixes section PTRD if it points to somewhere inside the new header
+        fixed_PTRD = self.min_data_init
         if self.verbose:
           print(" => {}".format(hex(fixed_PTRD)), end='')
 
