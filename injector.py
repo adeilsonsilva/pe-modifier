@@ -25,14 +25,23 @@ SECTION_HEADER_SIZE = 40
 class PEInjector:
 
   def __init__(self,
-               input_path,
+               _input,
                n_bytes,
                n_sections_to_inject=1,
                middleware_path=None,
                output_path=None,
                verbose=False):
 
-    self.input_path           = input_path
+    # Check if input is a path to a file or raw data
+    if isinstance(_input, str) and os.path.isfile(_input):
+      self.pe           = pefile.PE(name=_input, fast_load=True)
+      self.input_buffer = open(_input, 'rb')
+    elif isinstance(_input, np.ndarray):
+      self.pe           = pefile.PE(data=_input.tobytes())
+      self.input_buffer = io.BytesIO(_input)
+    else:
+      raise ValueError(f"Input has unknown type {type(_input)}.")
+
     self.middleware_path      = middleware_path
     self.output_path          = output_path
     self.n_bytes              = n_bytes
@@ -43,10 +52,6 @@ class PEInjector:
     return
 
   def run(self, randomly=True):
-    # Load input file and set basic file info
-    self.pe           = pefile.PE(name=self.input_path, fast_load=True)
-    self.input_buffer = open(self.input_path, 'rb')
-
     # Inject first section
     pe_data = self.__inject(randomly)
 
